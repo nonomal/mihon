@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.data.track.bangumi
 
 import eu.kanade.tachiyomi.BuildConfig
+import eu.kanade.tachiyomi.data.track.bangumi.dto.BGMOAuth
+import eu.kanade.tachiyomi.data.track.bangumi.dto.isExpired
 import kotlinx.serialization.json.Json
 import okhttp3.FormBody
 import okhttp3.Interceptor
@@ -14,17 +16,18 @@ class BangumiInterceptor(private val bangumi: Bangumi) : Interceptor {
     /**
      * OAuth object used for authenticated requests.
      */
-    private var oauth: OAuth? = bangumi.restoreToken()
+    private var oauth: BGMOAuth? = bangumi.restoreToken()
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
 
-        val currAuth = oauth ?: throw Exception("Not authenticated with Bangumi")
+        var currAuth: BGMOAuth = oauth ?: throw Exception("Not authenticated with Bangumi")
 
         if (currAuth.isExpired()) {
-            val response = chain.proceed(BangumiApi.refreshTokenRequest(currAuth.refresh_token!!))
+            val response = chain.proceed(BangumiApi.refreshTokenRequest(currAuth.refreshToken!!))
             if (response.isSuccessful) {
-                newAuth(json.decodeFromString<OAuth>(response.body.string()))
+                currAuth = json.decodeFromString<BGMOAuth>(response.body.string())
+                newAuth(currAuth)
             } else {
                 response.close()
             }
@@ -38,28 +41,28 @@ class BangumiInterceptor(private val bangumi: Bangumi) : Interceptor {
             .apply {
                 if (originalRequest.method == "GET") {
                     val newUrl = originalRequest.url.newBuilder()
-                        .addQueryParameter("access_token", currAuth.access_token)
+                        .addQueryParameter("access_token", currAuth.accessToken)
                         .build()
                     url(newUrl)
                 } else {
-                    post(addToken(currAuth.access_token, originalRequest.body as FormBody))
+                    post(addToken(currAuth.accessToken, originalRequest.body as FormBody))
                 }
             }
             .build()
             .let(chain::proceed)
     }
 
-    fun newAuth(oauth: OAuth?) {
+    fun newAuth(oauth: BGMOAuth?) {
         this.oauth = if (oauth == null) {
             null
         } else {
-            OAuth(
-                oauth.access_token,
-                oauth.token_type,
+            BGMOAuth(
+                oauth.accessToken,
+                oauth.tokenType,
                 System.currentTimeMillis() / 1000,
-                oauth.expires_in,
-                oauth.refresh_token,
-                this.oauth?.user_id,
+                oauth.expiresIn,
+                oauth.refreshToken,
+                this.oauth?.userId,
             )
         }
 

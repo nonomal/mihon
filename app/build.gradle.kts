@@ -1,20 +1,27 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+@file:Suppress("ChromeOsAbiSupport")
+
+import mihon.buildlogic.getBuildTime
+import mihon.buildlogic.getCommitCount
+import mihon.buildlogic.getGitSha
 
 plugins {
-    id("com.android.application")
-    id("com.mikepenz.aboutlibraries.plugin")
-    kotlin("android")
-    kotlin("plugin.serialization")
+    id("mihon.android.application")
+    id("mihon.android.application.compose")
     id("com.github.zellius.shortcut-helper")
+    kotlin("plugin.serialization")
+    alias(libs.plugins.aboutLibraries)
 }
 
 if (gradle.startParameter.taskRequests.toString().contains("Standard")) {
-    apply<com.google.gms.googleservices.GoogleServicesPlugin>()
+    pluginManager.apply {
+        apply(libs.plugins.google.services.get().pluginId)
+        apply(libs.plugins.firebase.crashlytics.get().pluginId)
+    }
 }
 
 shortcutHelper.setFilePath("./shortcuts.xml")
 
-val SUPPORTED_ABIS = setOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+val supportedAbis = setOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
 
 android {
     namespace = "eu.kanade.tachiyomi"
@@ -22,8 +29,8 @@ android {
     defaultConfig {
         applicationId = "app.mihon"
 
-        versionCode = 6
-        versionName = "0.16.4"
+        versionCode = 9
+        versionName = "0.17.1"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")
@@ -32,7 +39,7 @@ android {
         buildConfigField("boolean", "PREVIEW", "false")
 
         ndk {
-            abiFilters += SUPPORTED_ABIS
+            abiFilters += supportedAbis
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -42,7 +49,7 @@ android {
         abi {
             isEnable = true
             reset()
-            include(*SUPPORTED_ABIS.toTypedArray())
+            include(*supportedAbis.toTypedArray())
             isUniversalApk = true
         }
     }
@@ -93,8 +100,6 @@ android {
             dimension = "default"
         }
         create("dev") {
-            // Include pseudolocales: https://developer.android.com/guide/topics/resources/pseudolocales
-            resourceConfigurations.addAll(listOf("en", "en_XA", "ar_XB", "xxhdpi"))
             dimension = "default"
         }
     }
@@ -102,13 +107,16 @@ android {
     packaging {
         resources.excludes.addAll(
             listOf(
+                "kotlin-tooling-metadata.json",
                 "META-INF/DEPENDENCIES",
                 "LICENSE.txt",
                 "META-INF/LICENSE",
-                "META-INF/LICENSE.txt",
+                "META-INF/**/LICENSE.txt",
+                "META-INF/*.properties",
+                "META-INF/**/*.properties",
                 "META-INF/README.md",
                 "META-INF/NOTICE",
-                "META-INF/*.kotlin_module",
+                "META-INF/*.version",
             ),
         )
     }
@@ -119,7 +127,6 @@ android {
 
     buildFeatures {
         viewBinding = true
-        compose = true
         buildConfig = true
 
         // Disable some unused things
@@ -132,14 +139,29 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
     }
+}
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = compose.versions.compiler.get()
+kotlin {
+    compilerOptions {
+        freeCompilerArgs.addAll(
+            "-opt-in=androidx.compose.animation.ExperimentalAnimationApi",
+            "-opt-in=androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi",
+            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
+            "-opt-in=androidx.compose.foundation.layout.ExperimentalLayoutApi",
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
+            "-opt-in=androidx.compose.ui.ExperimentalComposeUiApi",
+            "-opt-in=coil3.annotation.ExperimentalCoilApi",
+            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
+            "-opt-in=kotlinx.coroutines.FlowPreview",
+            "-opt-in=kotlinx.coroutines.InternalCoroutinesApi",
+            "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
+        )
     }
 }
 
 dependencies {
     implementation(projects.i18n)
+    implementation(projects.core.archive)
     implementation(projects.core.common)
     implementation(projects.coreMetadata)
     implementation(projects.sourceApi)
@@ -150,19 +172,17 @@ dependencies {
     implementation(projects.presentationWidget)
 
     // Compose
-    implementation(platform(compose.bom))
     implementation(compose.activity)
     implementation(compose.foundation)
     implementation(compose.material3.core)
-    implementation(compose.material.core)
     implementation(compose.material.icons)
     implementation(compose.animation)
     implementation(compose.animation.graphics)
     debugImplementation(compose.ui.tooling)
     implementation(compose.ui.tooling.preview)
     implementation(compose.ui.util)
-    implementation(compose.accompanist.webview)
-    implementation(compose.accompanist.systemuicontroller)
+
+    implementation(androidx.interpolator)
 
     implementation(androidx.paging.runtime)
     implementation(androidx.paging.compose)
@@ -208,13 +228,12 @@ dependencies {
     // Disk
     implementation(libs.disklrucache)
     implementation(libs.unifile)
-    implementation(libs.bundles.archive)
 
     // Preferences
     implementation(libs.preferencektx)
 
     // Dependency injection
-    implementation(libs.injekt.core)
+    implementation(libs.injekt)
 
     // Image loading
     implementation(platform(libs.coil.bom))
@@ -237,12 +256,16 @@ dependencies {
     implementation(libs.bundles.voyager)
     implementation(libs.compose.materialmotion)
     implementation(libs.swipe)
+    implementation(libs.compose.webview)
+    implementation(libs.compose.grid)
 
     // Logging
     implementation(libs.logcat)
 
     // Crash reports/analytics
+    "standardImplementation"(platform(libs.firebase.bom))
     "standardImplementation"(libs.firebase.analytics)
+    "standardImplementation"(libs.firebase.crashlytics)
 
     // Shizuku
     implementation(libs.bundles.shizuku)
@@ -253,6 +276,8 @@ dependencies {
     // For detecting memory leaks; see https://square.github.io/leakcanary/
     // debugImplementation(libs.leakcanary.android)
     implementation(libs.leakcanary.plumber)
+
+    testImplementation(kotlinx.coroutines.test)
 }
 
 androidComponents {
@@ -268,48 +293,6 @@ androidComponents {
         // Only excluding in standard flavor because this breaks
         // Layout Inspector's Compose tree
         it.packaging.resources.excludes.add("META-INF/*.version")
-    }
-}
-
-tasks {
-    // See https://kotlinlang.org/docs/reference/experimental.html#experimental-status-of-experimental-api(-markers)
-    withType<KotlinCompile> {
-        kotlinOptions.freeCompilerArgs += listOf(
-            "-Xcontext-receivers",
-            "-opt-in=androidx.compose.foundation.layout.ExperimentalLayoutApi",
-            "-opt-in=androidx.compose.material.ExperimentalMaterialApi",
-            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
-            "-opt-in=androidx.compose.material.ExperimentalMaterialApi",
-            "-opt-in=androidx.compose.ui.ExperimentalComposeUiApi",
-            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
-            "-opt-in=androidx.compose.animation.ExperimentalAnimationApi",
-            "-opt-in=androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi",
-            "-opt-in=coil3.annotation.ExperimentalCoilApi",
-            "-opt-in=com.google.accompanist.permissions.ExperimentalPermissionsApi",
-            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
-            "-opt-in=kotlinx.coroutines.FlowPreview",
-            "-opt-in=kotlinx.coroutines.InternalCoroutinesApi",
-            "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
-        )
-
-        if (project.findProperty("tachiyomi.enableComposeCompilerMetrics") == "true") {
-            kotlinOptions.freeCompilerArgs += listOf(
-                "-P",
-                "plugin:androidx.compose.compiler.plugins.kotlin:reportsDestination=" +
-                    project.layout.buildDirectory.dir("compose_metrics").get().asFile.absolutePath,
-            )
-            kotlinOptions.freeCompilerArgs += listOf(
-                "-P",
-                "plugin:androidx.compose.compiler.plugins.kotlin:metricsDestination=" +
-                    project.layout.buildDirectory.dir("compose_metrics").get().asFile.absolutePath,
-            )
-        }
-
-        // https://developer.android.com/jetpack/androidx/releases/compose-compiler#1.5.9
-        kotlinOptions.freeCompilerArgs += listOf(
-            "-P",
-            "plugin:androidx.compose.compiler.plugins.kotlin:nonSkippingGroupOptimization=true",
-        )
     }
 }
 

@@ -75,8 +75,7 @@ import tachiyomi.presentation.core.components.material.ExtendedFloatingActionBut
 import tachiyomi.presentation.core.components.material.PullRefresh
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
-import tachiyomi.presentation.core.util.isScrolledToEnd
-import tachiyomi.presentation.core.util.isScrollingUp
+import tachiyomi.presentation.core.util.shouldExpandFAB
 import tachiyomi.source.local.isLocal
 import java.time.Instant
 
@@ -346,7 +345,7 @@ private fun MangaScreenSmallImpl(
                     },
                     icon = { Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null) },
                     onClick = onContinueReading,
-                    expanded = chapterListState.isScrollingUp() || chapterListState.isScrolledToEnd(),
+                    expanded = chapterListState.shouldExpandFAB(),
                 )
             }
         },
@@ -356,7 +355,7 @@ private fun MangaScreenSmallImpl(
         PullRefresh(
             refreshing = state.isRefreshingData,
             onRefresh = onRefresh,
-            enabled = { !isAnySelected },
+            enabled = !isAnySelected,
             indicatorPadding = PaddingValues(top = topPadding),
         ) {
             val layoutDirection = LocalLayoutDirection.current
@@ -381,13 +380,9 @@ private fun MangaScreenSmallImpl(
                         MangaInfoBox(
                             isTabletUi = false,
                             appBarPadding = topPadding,
-                            title = state.manga.title,
-                            author = state.manga.author,
-                            artist = state.manga.artist,
+                            manga = state.manga,
                             sourceName = remember { state.source.getNameForMangaInfo() },
                             isStubSource = remember { state.source is StubSource },
-                            coverDataProvider = { state.manga },
-                            status = state.manga.status,
                             onCoverClick = onCoverClicked,
                             doSearch = onSearch,
                         )
@@ -594,7 +589,7 @@ fun MangaScreenLargeImpl(
                     },
                     icon = { Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null) },
                     onClick = onContinueReading,
-                    expanded = chapterListState.isScrollingUp() || chapterListState.isScrolledToEnd(),
+                    expanded = chapterListState.shouldExpandFAB(),
                 )
             }
         },
@@ -602,7 +597,7 @@ fun MangaScreenLargeImpl(
         PullRefresh(
             refreshing = state.isRefreshingData,
             onRefresh = onRefresh,
-            enabled = { !isAnySelected },
+            enabled = !isAnySelected,
             indicatorPadding = PaddingValues(
                 start = insetPadding.calculateStartPadding(layoutDirection),
                 top = with(density) { topBarHeight.toDp() },
@@ -623,13 +618,9 @@ fun MangaScreenLargeImpl(
                         MangaInfoBox(
                             isTabletUi = true,
                             appBarPadding = contentPadding.calculateTopPadding(),
-                            title = state.manga.title,
-                            author = state.manga.author,
-                            artist = state.manga.artist,
+                            manga = state.manga,
                             sourceName = remember { state.source.getNameForMangaInfo() },
                             isStubSource = remember { state.source is StubSource },
-                            coverDataProvider = { state.manga },
-                            status = state.manga.status,
                             onCoverClick = onCoverClicked,
                             doSearch = onSearch,
                         )

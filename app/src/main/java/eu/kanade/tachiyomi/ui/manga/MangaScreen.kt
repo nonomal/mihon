@@ -18,10 +18,13 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.core.net.toUri
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.core.util.ifSourcesLoaded
 import eu.kanade.domain.manga.model.hasCustomCover
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.presentation.category.components.ChangeCategoryDialog
@@ -40,6 +43,8 @@ import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.isLocalOrStub
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.ui.browse.migration.search.MigrateDialog
+import eu.kanade.tachiyomi.ui.browse.migration.search.MigrateDialogScreenModel
 import eu.kanade.tachiyomi.ui.browse.migration.search.MigrateSearchScreen
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
@@ -73,13 +78,21 @@ class MangaScreen(
 
     @Composable
     override fun Content() {
+        if (!ifSourcesLoaded()) {
+            LoadingScreen()
+            return
+        }
+
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
         val haptic = LocalHapticFeedback.current
         val scope = rememberCoroutineScope()
-        val screenModel = rememberScreenModel { MangaScreenModel(context, mangaId, fromSource) }
+        val lifecycleOwner = LocalLifecycleOwner.current
+        val screenModel = rememberScreenModel {
+            MangaScreenModel(context, lifecycleOwner.lifecycle, mangaId, fromSource)
+        }
 
-        val state by screenModel.state.collectAsState()
+        val state by screenModel.state.collectAsStateWithLifecycle()
 
         if (state is MangaScreenModel.State.Loading) {
             LoadingScreen()
@@ -130,7 +143,7 @@ class MangaScreen(
                 )
             }.takeIf { isHttpSource },
             onTrackingClicked = {
-                if (screenModel.loggedInTrackers.isEmpty()) {
+                if (!successState.hasLoggedInTrackers) {
                     navigator.push(SettingsScreen(SettingsScreen.Destination.Tracking))
                 } else {
                     screenModel.showTrackDialog()
@@ -185,11 +198,28 @@ class MangaScreen(
                     },
                 )
             }
-            is MangaScreenModel.Dialog.DuplicateManga -> DuplicateMangaDialog(
-                onDismissRequest = onDismissRequest,
-                onConfirm = { screenModel.toggleFavorite(onRemoved = {}, checkDuplicate = false) },
-                onOpenManga = { navigator.push(MangaScreen(dialog.duplicate.id)) },
-            )
+
+            is MangaScreenModel.Dialog.DuplicateManga -> {
+                DuplicateMangaDialog(
+                    onDismissRequest = onDismissRequest,
+                    onConfirm = { screenModel.toggleFavorite(onRemoved = {}, checkDuplicate = false) },
+                    onOpenManga = { navigator.push(MangaScreen(dialog.duplicate.id)) },
+                    onMigrate = {
+                        screenModel.showMigrateDialog(dialog.duplicate)
+                    },
+                )
+            }
+
+            is MangaScreenModel.Dialog.Migrate -> {
+                MigrateDialog(
+                    oldManga = dialog.oldManga,
+                    newManga = dialog.newManga,
+                    screenModel = MigrateDialogScreenModel(),
+                    onDismissRequest = onDismissRequest,
+                    onClickTitle = { navigator.push(MangaScreen(dialog.oldManga.id)) },
+                    onPopScreen = { navigator.replace(MangaScreen(dialog.newManga.id)) },
+                )
+            }
             MangaScreenModel.Dialog.SettingsSheet -> ChapterSettingsDialog(
                 onDismissRequest = onDismissRequest,
                 manga = successState.manga,
@@ -223,7 +253,7 @@ class MangaScreen(
                         sm.editCover(context, it)
                     }
                     MangaCoverDialog(
-                        coverDataProvider = { manga!! },
+                        manga = manga!!,
                         snackbarHostState = sm.snackbarHostState,
                         isCustomCover = remember(manga) { manga!!.hasCustomCover() },
                         onShareClick = { sm.shareCover(context) },
